@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import {
+  clearActiveProfile,
   createProfile,
   deleteProfile,
   diffTargetAgainstProfile,
@@ -64,6 +65,10 @@ export async function POST(request: NextRequest) {
         break;
       case "use-profile":
         await useProfile(body.appName || "", body.profileName || "", !!body.backup);
+        data = await getState();
+        break;
+      case "clear-active-profile":
+        await clearActiveProfile(body.appName || "");
         data = await getState();
         break;
       case "rename-profile":

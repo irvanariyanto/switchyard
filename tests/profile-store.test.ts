@@ -3,6 +3,7 @@ import path from "node:path";
 import os from "node:os";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
+  clearActiveProfile,
   createProfile,
   deleteProfile,
   expandTargetPath,
@@ -77,6 +78,32 @@ describe("profile store", () => {
     await expect(readFile(target, "utf8")).resolves.toBe("profile-content");
     const state = await getState();
     expect(state.apps[0].profiles.map((profile) => profile.name).sort()).toEqual(["personal", "work"]);
+  });
+
+  it("clears the active profile without deleting saved profiles", async () => {
+    const target = path.join(targetDir, "auth.json");
+    await writeFile(target, "work-content", "utf8");
+    await initApp("codex", target);
+    await saveCurrentAsProfile("codex", "work");
+
+    await clearActiveProfile("codex");
+
+    await expect(readFile(target, "utf8")).rejects.toThrow();
+    const state = await getState();
+    expect(state.apps[0].activeProfile).toBeNull();
+    expect(state.apps[0].targetExists).toBe(false);
+    expect(state.apps[0].profiles.map((profile) => profile.name)).toEqual(["work"]);
+  });
+
+  it("does not clear modified target content that is not a saved profile", async () => {
+    const target = path.join(targetDir, "auth.json");
+    await writeFile(target, "work-content", "utf8");
+    await initApp("codex", target);
+    await saveCurrentAsProfile("codex", "work");
+    await writeFile(target, "unsaved-current", "utf8");
+
+    await expect(clearActiveProfile("codex")).rejects.toThrow("No profile is currently in use");
+    await expect(readFile(target, "utf8")).resolves.toBe("unsaved-current");
   });
 
   it("creates a backup only for unsaved target content", async () => {

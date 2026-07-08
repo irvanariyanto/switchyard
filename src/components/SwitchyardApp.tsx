@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { AppSummary, DiffLine, SwitchyardState } from "@/lib/types";
 
 type Dialog = {
-  type: "add-app" | "save" | "new" | "use" | "rename" | "delete" | "remove-app";
+  type: "add-app" | "save" | "new" | "use" | "clear-use" | "rename" | "delete" | "remove-app";
   appName?: string;
   profileName?: string;
   oldName?: string;
@@ -134,6 +134,16 @@ export function SwitchyardApp({ initialState }: { initialState: SwitchyardState 
         setState(next);
         setDialog(null);
         notify(`Switched ${dialog.appName} to "${dialog.profileName}"`);
+      }
+
+      if (dialog.type === "clear-use" && selectedApp) {
+        const next = await api<SwitchyardState>({
+          action: "clear-active-profile",
+          appName: selectedApp.name
+        });
+        setState(next);
+        setDialog(null);
+        notify(`Cleared active profile for ${selectedApp.name}`);
       }
 
       if (dialog.type === "rename" && selectedApp && dialog.oldName) {
@@ -297,6 +307,16 @@ export function SwitchyardApp({ initialState }: { initialState: SwitchyardState 
                   <button type="button" className="secondary-button" onClick={() => setDialog({ type: "new", name: "" })}>
                     New profile
                   </button>
+                  {selectedApp.activeProfile && (
+                    <button
+                      type="button"
+                      className="secondary-button"
+                      disabled={busy}
+                      onClick={() => setDialog({ type: "clear-use" })}
+                    >
+                      Clear active
+                    </button>
+                  )}
                   <button
                     type="button"
                     className="primary-button"
@@ -534,7 +554,7 @@ export function SwitchyardApp({ initialState }: { initialState: SwitchyardState 
                 <button type="button" className="secondary-button" onClick={() => setDialog(null)}>Cancel</button>
                 <button
                   type="button"
-                  className={dialog.type === "delete" || dialog.type === "remove-app" ? "danger-button" : "primary-button"}
+                  className={dialog.type === "clear-use" || dialog.type === "delete" || dialog.type === "remove-app" ? "danger-button" : "primary-button"}
                   disabled={busy}
                   onClick={submitDialog}
                 >
@@ -564,6 +584,7 @@ function dialogTitle(dialog: Dialog) {
     case "save": return "Save current as profile";
     case "new": return "New profile";
     case "use": return `Switch to "${dialog.profileName}"`;
+    case "clear-use": return "Clear active profile?";
     case "rename": return "Rename profile";
     case "delete": return `Delete "${dialog.profileName}"?`;
     case "remove-app": return "Remove app?";
@@ -576,6 +597,7 @@ function dialogCopy(dialog: Dialog, app: AppSummary | null) {
     case "save": return `Copies the current contents of ${app?.target ?? "the target"} into a named profile.`;
     case "new": return "Creates an empty profile and opens the editor.";
     case "use": return "This overwrites the target file. The app reads it next time it runs.";
+    case "clear-use": return `Removes ${app?.target ?? "the target file"} so no profile is active. Saved profiles stay.`;
     case "rename": return "Profile files keep their contents.";
     case "delete": return "This removes the saved profile. The target file is not touched.";
     case "remove-app": return "This removes Switchyard's saved profiles for the app. The target file is not touched.";
@@ -589,6 +611,7 @@ function dialogConfirmLabel(dialog: Dialog) {
     case "save": return "Save profile";
     case "new": return "Create and edit";
     case "use": return "Switch";
+    case "clear-use": return "Clear active";
     case "rename": return "Rename";
     case "delete": return "Delete";
     case "remove-app": return "Remove app";

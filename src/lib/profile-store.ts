@@ -204,6 +204,16 @@ export async function useProfile(appName: string, profileName: string, backup: b
   await copyFile(source, target.targetPath);
 }
 
+export async function clearActiveProfile(appName: string) {
+  const app = validateName(appName, "App name");
+  const target = await readTargetBuffer(app);
+  if (!target.exists || !target.buffer || !(await targetMatchesExistingProfile(app, target.buffer))) {
+    throw new SwitchyardError("No profile is currently in use.");
+  }
+
+  await rm(target.targetPath, { force: true });
+}
+
 async function targetMatchesExistingProfile(appName: string, targetBuffer: Buffer) {
   const profileNames = await listProfileNames(appName);
   for (const profileName of profileNames) {
