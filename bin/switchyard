@@ -41,6 +41,7 @@ Usage:
   switchyard status             Show running status
   switchyard logs               Follow background logs
   switchyard open               Open $APP_NAME in a browser
+  switchyard update             Pull and build the latest version
   switchyard uninstall          Remove installed app, symlink, and runtime state
   switchyard uninstall --purge-data
 
@@ -52,6 +53,13 @@ EOF
 
 ensure_state_dir() {
   mkdir -p "$STATE_DIR"
+}
+
+need_command() {
+  if ! command -v "$1" >/dev/null 2>&1; then
+    echo "Missing required command: $1"
+    return 1
+  fi
 }
 
 managed_pid() {
@@ -89,9 +97,12 @@ PID: $pid
 Options:
   switchyard open
   switchyard status
+  switchyard logs
   switchyard stop
   switchyard restart --background
-  switchyard logs
+  switchyard update
+  switchyard uninstall
+  switchyard uninstall --purge-data
 EOF
 }
 
@@ -231,6 +242,79 @@ open_browser() {
   fi
 }
 
+update_switchyard() {
+  if [ ! -d "$PROJECT_DIR/.git" ]; then
+    echo "$APP_NAME cannot update itself because $PROJECT_DIR is not a git repository."
+    echo "Install with scripts/install.sh or update manually."
+    return 1
+  fi
+
+  need_command git
+  need_command npm
+
+  cd "$PROJECT_DIR"
+
+  if [ -n "$(git status --porcelain)" ]; then
+    echo "$APP_NAME cannot update while the install directory has local changes:"
+    git status --short
+    echo
+    echo "Commit, stash, or remove those changes, then run 'switchyard update' again."
+    return 1
+  fi
+
+  local branch upstream before remote pid restart_after
+  branch="$(git rev-parse --abbrev-ref HEAD)"
+  upstream="$(git rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null || true)"
+  if [ -z "$upstream" ]; then
+    upstream="origin/$branch"
+  fi
+
+  echo "Checking for $APP_NAME updates..."
+  git fetch --prune origin
+
+  before="$(git rev-parse HEAD)"
+  remote="$(git rev-parse "$upstream" 2>/dev/null || true)"
+  if [ -z "$remote" ]; then
+    echo "Could not resolve upstream branch: $upstream"
+    return 1
+  fi
+
+  if [ "$before" = "$remote" ]; then
+    echo "$APP_NAME is already up to date."
+    return 0
+  fi
+
+  if ! git merge-base --is-ancestor "$before" "$remote"; then
+    echo "$APP_NAME cannot update automatically because $branch cannot fast-forward to $upstream."
+    echo "Resolve the branch manually in $PROJECT_DIR."
+    return 1
+  fi
+
+  restart_after="false"
+  pid="$(managed_pid || true)"
+  if [ -n "$pid" ]; then
+    restart_after="true"
+    echo "Stopping running $APP_NAME before update..."
+    stop_server
+  elif pid="$(port_pid || true)" && [ -n "$pid" ]; then
+    echo "$APP_NAME is running at $URL but was not started in the background by this command."
+    echo "Stop it before updating, then run 'switchyard update' again."
+    return 1
+  fi
+
+  echo "Updating $APP_NAME..."
+  git merge --ff-only "$upstream"
+  npm install
+  npm run build
+  chmod +x "$PROJECT_DIR/bin/switchyard"
+
+  if [ "$restart_after" = "true" ]; then
+    start_background
+  else
+    echo "$APP_NAME updated."
+  fi
+}
+
 uninstall_switchyard() {
   local purge_data="false"
   case "${1:-}" in
@@ -327,6 +411,9 @@ case "$cmd" in
     ;;
   open)
     open_browser
+    ;;
+  update)
+    update_switchyard
     ;;
   uninstall)
     uninstall_switchyard "${1:-}"

@@ -26,6 +26,7 @@ switchyard stop               # stop background process
 switchyard restart --background
 switchyard logs               # follow background logs
 switchyard open               # open in browser
+switchyard update             # pull and build the latest version
 switchyard uninstall          # remove app, keep profile data
 switchyard uninstall --purge-data
 ```
