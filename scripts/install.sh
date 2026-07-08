@@ -65,6 +65,56 @@ need_command() {
   fi
 }
 
+normalize_shell_name() {
+  local shell_name
+  shell_name="$(basename "${1:-}")"
+  shell_name="${shell_name#-}"
+  case "$shell_name" in
+    bash|zsh|fish)
+      printf '%s\n' "$shell_name"
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+parent_shell_name() {
+  command -v ps >/dev/null 2>&1 || return 1
+  ps -p "$PPID" -o comm= 2>/dev/null | awk '{print $1}'
+}
+
+detect_install_shell() {
+  local override parent_shell parent_normalized login_normalized
+
+  override="$(normalize_shell_name "${SWITCHYARD_COMPLETION_SHELL:-}" 2>/dev/null || true)"
+  if [ -n "$override" ]; then
+    printf '%s\n' "$override"
+    return 0
+  fi
+
+  parent_shell="$(parent_shell_name || true)"
+  parent_normalized="$(normalize_shell_name "$parent_shell" 2>/dev/null || true)"
+  login_normalized="$(normalize_shell_name "${SHELL:-}" 2>/dev/null || true)"
+
+  if [ "$parent_normalized" = "bash" ] && [ -n "$login_normalized" ] && [ "$login_normalized" != "bash" ]; then
+    printf '%s\n' "$login_normalized"
+    return 0
+  fi
+
+  if [ -n "$parent_normalized" ]; then
+    printf '%s\n' "$parent_normalized"
+    return 0
+  fi
+
+  if [ -n "$login_normalized" ]; then
+    printf '%s\n' "$login_normalized"
+    return 0
+  fi
+
+  return 1
+}
+
 need_command git
 
 mkdir -p "$BIN_DIR"
@@ -111,7 +161,14 @@ chmod +x "$INSTALL_DIR/bin/switchyard"
 ln -sf "$INSTALL_DIR/bin/switchyard" "$BIN_DIR/switchyard"
 
 if [ "$INSTALL_COMPLETION" != "false" ]; then
-  if "$BIN_DIR/switchyard" install-completion; then
+  DETECTED_COMPLETION_SHELL="$(detect_install_shell || true)"
+  if [ -n "$DETECTED_COMPLETION_SHELL" ]; then
+    COMPLETION_COMMAND=("$BIN_DIR/switchyard" install-completion "$DETECTED_COMPLETION_SHELL")
+  else
+    COMPLETION_COMMAND=("$BIN_DIR/switchyard" install-completion)
+  fi
+
+  if "${COMPLETION_COMMAND[@]}"; then
     COMPLETION_MESSAGE="Shell completion installed."
   else
     COMPLETION_MESSAGE="Shell completion was not installed automatically. Run: switchyard install-completion zsh"

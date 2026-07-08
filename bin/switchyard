@@ -322,19 +322,60 @@ update_switchyard() {
   fi
 }
 
-detect_completion_shell() {
+normalize_shell_name() {
   local shell_name
-  shell_name="$(basename "${SHELL:-}")"
+  shell_name="$(basename "${1:-}")"
+  shell_name="${shell_name#-}"
   case "$shell_name" in
     bash|zsh|fish)
       printf '%s\n' "$shell_name"
       ;;
     *)
-      echo "Could not detect a supported shell from SHELL=${SHELL:-}." >&2
-      echo "Use: switchyard completion [bash|zsh|fish]" >&2
       return 1
       ;;
   esac
+}
+
+parent_shell_name() {
+  command -v ps >/dev/null 2>&1 || return 1
+  ps -p "$PPID" -o comm= 2>/dev/null | awk '{print $1}'
+}
+
+detect_completion_shell() {
+  local override parent_shell parent_normalized login_normalized
+
+  override="$(normalize_shell_name "${SWITCHYARD_COMPLETION_SHELL:-}" 2>/dev/null || true)"
+  if [ -n "$override" ]; then
+    printf '%s\n' "$override"
+    return 0
+  fi
+
+  parent_shell="$(parent_shell_name || true)"
+  parent_normalized="$(normalize_shell_name "$parent_shell" 2>/dev/null || true)"
+  login_normalized="$(normalize_shell_name "${SHELL:-}" 2>/dev/null || true)"
+
+  # When installed through "curl | bash", the immediate parent is bash even
+  # though the user's interactive terminal is usually $SHELL.
+  if [ "$parent_normalized" = "bash" ] && [ -n "$login_normalized" ] && [ "$login_normalized" != "bash" ]; then
+    printf '%s\n' "$login_normalized"
+    return 0
+  fi
+
+  if [ -n "$parent_normalized" ]; then
+    printf '%s\n' "$parent_normalized"
+    return 0
+  fi
+
+  if [ -n "$login_normalized" ]; then
+    printf '%s\n' "$login_normalized"
+    return 0
+  fi
+
+  echo "Could not detect a supported shell." >&2
+  echo "Parent shell: ${parent_shell:-unknown}" >&2
+  echo "SHELL: ${SHELL:-unset}" >&2
+  echo "Use: switchyard completion [bash|zsh|fish]" >&2
+  return 1
 }
 
 resolve_completion_shell() {
