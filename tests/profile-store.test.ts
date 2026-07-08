@@ -4,10 +4,12 @@ import os from "node:os";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   createProfile,
+  deleteProfile,
   expandTargetPath,
   getState,
   initApp,
   readProfile,
+  renameProfile,
   saveCurrentAsProfile,
   useProfile,
   validateName,
@@ -110,5 +112,48 @@ describe("profile store", () => {
     await writeProfile("gh", "main", "github.com:\n  user: dev");
 
     await expect(readProfile("gh", "main")).resolves.toContain("github.com");
+  });
+
+  it("renames a profile and keeps its contents", async () => {
+    const target = path.join(targetDir, "config.yml");
+    await initApp("gh", target);
+    await createProfile("gh", "main");
+    await writeProfile("gh", "main", "github.com:\n  user: dev");
+
+    await renameProfile("gh", "main", "work");
+
+    await expect(readProfile("gh", "work")).resolves.toContain("user: dev");
+    const state = await getState();
+    expect(state.apps[0].profiles.map((profile) => profile.name)).toEqual(["work"]);
+    await expect(readProfile("gh", "main")).rejects.toThrow();
+  });
+
+  it("does not rename a profile over another profile", async () => {
+    const target = path.join(targetDir, "config.yml");
+    await initApp("gh", target);
+    await createProfile("gh", "main");
+    await createProfile("gh", "work");
+
+    await expect(renameProfile("gh", "main", "work")).rejects.toThrow("already exists");
+  });
+
+  it("deletes a profile without touching the target file", async () => {
+    const target = path.join(targetDir, "config.yml");
+    await writeFile(target, "current-target", "utf8");
+    await initApp("gh", target);
+    await createProfile("gh", "main");
+
+    await deleteProfile("gh", "main");
+
+    await expect(readFile(target, "utf8")).resolves.toBe("current-target");
+    const state = await getState();
+    expect(state.apps[0].profiles).toEqual([]);
+  });
+
+  it("rejects deleting a missing profile", async () => {
+    const target = path.join(targetDir, "config.yml");
+    await initApp("gh", target);
+
+    await expect(deleteProfile("gh", "missing")).rejects.toThrow("does not exist");
   });
 });

@@ -221,6 +221,7 @@ export async function renameProfile(appName: string, oldName: string, newName: s
   const from = profilePath(app, oldProfile);
   const to = profilePath(app, newProfile);
   if (!(await exists(from))) throw new SwitchyardError(`Profile "${oldProfile}" does not exist.`, 404);
+  if (oldProfile === newProfile) return;
   if (oldProfile !== newProfile && (await exists(to))) throw new SwitchyardError(`Profile "${newProfile}" already exists.`);
   await rename(from, to);
 }
@@ -239,6 +240,7 @@ export async function deleteProfile(appName: string, profileName: string) {
   const app = validateName(appName, "App name");
   const profile = validateName(profileName, "Profile name");
   await ensureApp(app);
+  if (!(await exists(profilePath(app, profile)))) throw new SwitchyardError(`Profile "${profile}" does not exist.`, 404);
   await rm(profilePath(app, profile), { force: true });
 }
 

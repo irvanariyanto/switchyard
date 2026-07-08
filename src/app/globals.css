@@ -368,6 +368,7 @@ code {
 
 .secondary-button.small,
 .primary-button.small,
+.danger-button.small,
 .disabled-button {
   min-width: 54px;
   padding: 5px 10px;

@@ -358,6 +358,29 @@ export function SwitchyardApp({ initialState }: { initialState: SwitchyardState 
                       >
                         Diff
                       </button>
+                      <button
+                        type="button"
+                        className="secondary-button small"
+                        disabled={busy}
+                        onClick={() => setDialog({
+                          type: "rename",
+                          oldName: profile.name,
+                          name: profile.name
+                        })}
+                      >
+                        Rename
+                      </button>
+                      <button
+                        type="button"
+                        className="danger-button small"
+                        disabled={busy}
+                        onClick={() => setDialog({
+                          type: "delete",
+                          profileName: profile.name
+                        })}
+                      >
+                        Delete
+                      </button>
                     </div>
                   </article>
                 ))}
