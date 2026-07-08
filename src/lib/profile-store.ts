@@ -115,6 +115,21 @@ export async function removeApp(appName: string) {
   await rm(appDir(name), { recursive: true, force: true });
 }
 
+export async function updateApp(appName: string, newName: string, target: string) {
+  const current = validateName(appName, "Current app name");
+  const next = validateName(newName, "New app name");
+  if (typeof target !== "string" || !target.trim()) throw new SwitchyardError("Target path is required.");
+  await ensureApp(current);
+
+  if (current !== next) {
+    if (await exists(appDir(next))) throw new SwitchyardError(`App "${next}" already exists.`);
+    await rename(appDir(current), appDir(next));
+  }
+
+  await writeFile(path.join(appDir(next), "TARGET"), target.trim(), "utf8");
+  return next;
+}
+
 export async function getApp(appName: string): Promise<AppSummary> {
   const name = validateName(appName, "App name");
   const { raw, targetPath, exists: targetExists, buffer: targetBuffer } = await readTargetBuffer(name);

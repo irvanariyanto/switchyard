@@ -11,6 +11,7 @@ import {
   removeApp,
   renameProfile,
   saveCurrentAsProfile,
+  updateApp,
   useProfile,
   writeProfile
 } from "@/lib/profile-store";
@@ -46,6 +47,10 @@ export async function POST(request: NextRequest) {
         break;
       case "remove-app":
         await removeApp(body.appName || "");
+        data = await getState();
+        break;
+      case "update-app":
+        await updateApp(body.appName || "", body.newName || "", body.target || "");
         data = await getState();
         break;
       case "save-current":

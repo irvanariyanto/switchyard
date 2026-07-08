@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { AppSummary, DiffLine, SwitchyardState } from "@/lib/types";
 
 type Dialog = {
-  type: "add-app" | "save" | "new" | "use" | "clear-use" | "rename" | "delete" | "remove-app";
+  type: "add-app" | "edit-app" | "save" | "new" | "use" | "clear-use" | "rename" | "delete" | "remove-app";
   appName?: string;
   profileName?: string;
   oldName?: string;
@@ -97,6 +97,23 @@ export function SwitchyardApp({ initialState }: { initialState: SwitchyardState 
         setSelectedAppName(name);
         setDialog(null);
         notify(`Added app "${name}"`);
+      }
+
+      if (dialog.type === "edit-app" && selectedApp) {
+        const name = (dialog.name || "").trim();
+        const target = (dialog.target || "").trim();
+        if (!validName(name)) return setDialog({ ...dialog, error: "Use letters, digits, dot, dash or underscore." });
+        if (!target) return setDialog({ ...dialog, error: "Target path is required." });
+        const next = await api<SwitchyardState>({
+          action: "update-app",
+          appName: selectedApp.name,
+          newName: name,
+          target
+        });
+        setState(next);
+        setSelectedAppName(name);
+        setDialog(null);
+        notify(`Updated app "${name}"`);
       }
 
       if (dialog.type === "save" && selectedApp) {
@@ -304,6 +321,18 @@ export function SwitchyardApp({ initialState }: { initialState: SwitchyardState 
                   </div>
                 </div>
                 <div className="header-actions">
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    disabled={busy}
+                    onClick={() => setDialog({
+                      type: "edit-app",
+                      name: selectedApp.name,
+                      target: selectedApp.target
+                    })}
+                  >
+                    Edit app
+                  </button>
                   <button type="button" className="secondary-button" onClick={() => setDialog({ type: "new", name: "" })}>
                     New profile
                   </button>
@@ -324,6 +353,14 @@ export function SwitchyardApp({ initialState }: { initialState: SwitchyardState 
                     onClick={() => setDialog({ type: "save", name: "" })}
                   >
                     Save current as profile
+                  </button>
+                  <button
+                    type="button"
+                    className="danger-button"
+                    disabled={busy}
+                    onClick={() => setDialog({ type: "remove-app" })}
+                  >
+                    Remove app
                   </button>
                 </div>
               </header>
@@ -498,7 +535,7 @@ export function SwitchyardApp({ initialState }: { initialState: SwitchyardState 
               <h2>{dialogTitle(dialog)}</h2>
               <p>{dialogCopy(dialog, selectedApp)}</p>
 
-              {dialog.type === "add-app" && (
+              {(dialog.type === "add-app" || dialog.type === "edit-app") && (
                 <div className="field-stack">
                   <label>
                     <span>App name</span>
@@ -581,6 +618,7 @@ function statusPresentation(app: AppSummary) {
 function dialogTitle(dialog: Dialog) {
   switch (dialog.type) {
     case "add-app": return "Add app";
+    case "edit-app": return "Edit app";
     case "save": return "Save current as profile";
     case "new": return "New profile";
     case "use": return `Switch to "${dialog.profileName}"`;
@@ -594,6 +632,7 @@ function dialogTitle(dialog: Dialog) {
 function dialogCopy(dialog: Dialog, app: AppSummary | null) {
   switch (dialog.type) {
     case "add-app": return "Register a config file to manage.";
+    case "edit-app": return "Rename the app or point it at a different target file. Saved profiles stay with this app.";
     case "save": return `Copies the current contents of ${app?.target ?? "the target"} into a named profile.`;
     case "new": return "Creates an empty profile and opens the editor.";
     case "use": return "This overwrites the target file. The app reads it next time it runs.";
@@ -608,6 +647,7 @@ function dialogConfirmLabel(dialog: Dialog) {
   if ((dialog.type === "save" || dialog.type === "new") && dialog.overwrite) return "Overwrite";
   switch (dialog.type) {
     case "add-app": return "Add app";
+    case "edit-app": return "Save app";
     case "save": return "Save profile";
     case "new": return "Create and edit";
     case "use": return "Switch";

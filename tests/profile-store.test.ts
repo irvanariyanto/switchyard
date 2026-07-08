@@ -11,7 +11,9 @@ import {
   initApp,
   readProfile,
   renameProfile,
+  removeApp,
   saveCurrentAsProfile,
+  updateApp,
   useProfile,
   validateName,
   writeProfile
@@ -63,6 +65,57 @@ describe("profile store", () => {
     expect(state.apps[0].profiles[0].name).toBe("work");
     expect(state.apps[0].profiles[0].active).toBe(true);
     expect(state.apps[0].status).toBe("in-sync");
+  });
+
+  it("updates an app target path without removing profiles", async () => {
+    const firstTarget = path.join(targetDir, "auth.json");
+    const nextTarget = path.join(targetDir, "auth-next.json");
+    await initApp("codex", firstTarget);
+    await createProfile("codex", "work");
+    await writeProfile("codex", "work", "profile-content");
+
+    await updateApp("codex", "codex", nextTarget);
+
+    const state = await getState();
+    expect(state.apps[0].name).toBe("codex");
+    expect(state.apps[0].target).toBe(nextTarget);
+    expect(state.apps[0].profiles.map((profile) => profile.name)).toEqual(["work"]);
+    await expect(readProfile("codex", "work")).resolves.toBe("profile-content");
+  });
+
+  it("renames an app and keeps its target and profiles", async () => {
+    const target = path.join(targetDir, "auth.json");
+    await initApp("codex", target);
+    await createProfile("codex", "work");
+    await writeProfile("codex", "work", "profile-content");
+
+    await updateApp("codex", "claude", target);
+
+    const state = await getState();
+    expect(state.apps.map((app) => app.name)).toEqual(["claude"]);
+    expect(state.apps[0].target).toBe(target);
+    await expect(readProfile("claude", "work")).resolves.toBe("profile-content");
+    await expect(readProfile("codex", "work")).rejects.toThrow();
+  });
+
+  it("does not rename an app over another app", async () => {
+    await initApp("codex", path.join(targetDir, "codex.json"));
+    await initApp("claude", path.join(targetDir, "claude.json"));
+
+    await expect(updateApp("codex", "claude", path.join(targetDir, "next.json"))).rejects.toThrow("already exists");
+  });
+
+  it("removes an app without touching the target file", async () => {
+    const target = path.join(targetDir, "auth.json");
+    await writeFile(target, "current-target", "utf8");
+    await initApp("codex", target);
+    await createProfile("codex", "work");
+
+    await removeApp("codex");
+
+    await expect(readFile(target, "utf8")).resolves.toBe("current-target");
+    const state = await getState();
+    expect(state.apps).toEqual([]);
   });
 
   it("switches to a profile without creating a duplicate backup for named target content", async () => {
