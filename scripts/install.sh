@@ -6,6 +6,8 @@ INSTALL_DIR="${SWITCHYARD_HOME:-$HOME/.local/share/switchyard}"
 BIN_DIR="${SWITCHYARD_BIN_DIR:-$HOME/.local/bin}"
 START_AFTER_INSTALL="false"
 BACKGROUND="false"
+UNINSTALL="false"
+PURGE_DATA="false"
 
 usage() {
   cat <<EOF
@@ -15,6 +17,8 @@ Usage:
   install.sh
   install.sh --start
   install.sh --start --background
+  install.sh --uninstall
+  install.sh --uninstall --purge-data
 
 Environment:
   SWITCHYARD_HOME=$INSTALL_DIR
@@ -29,6 +33,12 @@ while [ $# -gt 0 ]; do
       ;;
     --background|-b|--daemon|-d)
       BACKGROUND="true"
+      ;;
+    --uninstall)
+      UNINSTALL="true"
+      ;;
+    --purge-data)
+      PURGE_DATA="true"
       ;;
     --help|-h)
       usage
@@ -51,10 +61,31 @@ need_command() {
 }
 
 need_command git
-need_command node
-need_command npm
 
 mkdir -p "$BIN_DIR"
+
+if [ "$UNINSTALL" = "true" ]; then
+  if [ -x "$INSTALL_DIR/bin/switchyard" ]; then
+    if [ "$PURGE_DATA" = "true" ]; then
+      "$INSTALL_DIR/bin/switchyard" uninstall --purge-data
+    else
+      "$INSTALL_DIR/bin/switchyard" uninstall
+    fi
+  else
+    echo "Switchyard command not found at $INSTALL_DIR/bin/switchyard"
+    rm -f "$BIN_DIR/switchyard"
+    rm -rf "$INSTALL_DIR"
+    rm -rf "${XDG_STATE_HOME:-$HOME/.local/state}/switchyard"
+    if [ "$PURGE_DATA" = "true" ]; then
+      rm -rf "${SWITCHYARD_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/switchyard}"
+    fi
+    echo "Removed remaining install paths."
+  fi
+  exit 0
+fi
+
+need_command node
+need_command npm
 
 if [ -d "$INSTALL_DIR/.git" ]; then
   echo "Updating Switchyard in $INSTALL_DIR..."

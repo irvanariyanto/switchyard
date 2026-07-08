@@ -8,7 +8,7 @@ Switchyard is a local profile switcher for config files. It is the UI successor 
 - The app runs as a local server and exposes a browser UI for managing local config profiles.
 - Default local URL: `http://127.0.0.1:49287`.
 - One-line install and background start: `curl -fsSL https://raw.githubusercontent.com/irvanariyanto/switchyard/main/scripts/install.sh | bash -s -- --start --background`.
-- Runtime command: `switchyard`, with `start --background`, `stop`, `restart`, `status`, `logs`, and `open`.
+- Runtime command: `switchyard`, with `start --background`, `stop`, `restart`, `status`, `logs`, `open`, and `uninstall`.
 - UI reference: `../Switchyard.html`.
 - Legacy behavior reference: `../switch-profile.sh`.
 - Runtime data directory: `${XDG_CONFIG_HOME:-$HOME/.config}/switchyard`.

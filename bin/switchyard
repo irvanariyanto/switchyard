@@ -8,6 +8,7 @@ PORT="${SWITCHYARD_PORT:-$DEFAULT_PORT}"
 STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/switchyard"
 PID_FILE="$STATE_DIR/server.pid"
 LOG_FILE="$STATE_DIR/server.log"
+DATA_DIR="${SWITCHYARD_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/switchyard}"
 
 resolve_self() {
   local source="$1"
@@ -40,6 +41,8 @@ Usage:
   switchyard status             Show running status
   switchyard logs               Follow background logs
   switchyard open               Open $APP_NAME in a browser
+  switchyard uninstall          Remove installed app, symlink, and runtime state
+  switchyard uninstall --purge-data
 
 Environment:
   SWITCHYARD_PORT=$PORT
@@ -176,7 +179,7 @@ stop_server() {
     fi
     echo "$APP_NAME is listening on $URL but was not started by this command."
     printf "Stop PID %s? [y/N] " "$pid"
-    read -r answer
+    read -r answer || answer=""
     case "$answer" in
       y|Y|yes|YES) ;;
       *) echo "Not stopped."; return 0 ;;
@@ -228,6 +231,61 @@ open_browser() {
   fi
 }
 
+uninstall_switchyard() {
+  local purge_data="false"
+  case "${1:-}" in
+    --purge-data)
+      purge_data="true"
+      ;;
+    "")
+      ;;
+    *)
+      echo "Unknown uninstall option: $1"
+      echo "Use: switchyard uninstall [--purge-data]"
+      exit 1
+      ;;
+  esac
+
+  echo "Uninstalling $APP_NAME..."
+  stop_server
+
+  local bin_path
+  bin_path="$(command -v switchyard 2>/dev/null || true)"
+  if [ -n "$bin_path" ]; then
+    local target_bin=""
+    if [ -L "$bin_path" ]; then
+      target_bin="$(readlink "$bin_path")"
+      case "$target_bin" in
+        /*) ;;
+        *) target_bin="$(cd -P "$(dirname "$bin_path")" >/dev/null 2>&1 && pwd)/$target_bin" ;;
+      esac
+    fi
+    if [ "$target_bin" = "$PROJECT_DIR/bin/switchyard" ]; then
+      rm -f "$bin_path"
+      echo "Removed command: $bin_path"
+    elif [ "$bin_path" = "$PROJECT_DIR/bin/switchyard" ]; then
+      echo "Command is inside install directory."
+    else
+      echo "Command found but not removed: $bin_path"
+    fi
+  fi
+
+  rm -rf "$STATE_DIR"
+  echo "Removed runtime state: $STATE_DIR"
+
+  if [ "$purge_data" = "true" ]; then
+    rm -rf "$DATA_DIR"
+    echo "Removed profile data: $DATA_DIR"
+  else
+    echo "Kept profile data: $DATA_DIR"
+    echo "Use 'switchyard uninstall --purge-data' to remove profile data too."
+  fi
+
+  cd "$HOME"
+  rm -rf "$PROJECT_DIR"
+  echo "Removed install directory: $PROJECT_DIR"
+}
+
 cmd="${1:-start}"
 shift || true
 
@@ -269,6 +327,9 @@ case "$cmd" in
     ;;
   open)
     open_browser
+    ;;
+  uninstall)
+    uninstall_switchyard "${1:-}"
     ;;
   help|--help|-h)
     usage
