@@ -62,16 +62,30 @@ describe("profile store", () => {
     expect(state.apps[0].status).toBe("in-sync");
   });
 
-  it("switches to a profile and creates a backup when requested", async () => {
+  it("switches to a profile without creating a duplicate backup for named target content", async () => {
     const target = path.join(targetDir, "auth.json");
-    await writeFile(target, "current", "utf8");
+    await writeFile(target, "work-content", "utf8");
     await initApp("codex", target);
+    await saveCurrentAsProfile("codex", "work");
     await createProfile("codex", "personal");
     await writeProfile("codex", "personal", "profile-content");
 
     await useProfile("codex", "personal", true);
 
     await expect(readFile(target, "utf8")).resolves.toBe("profile-content");
+    const state = await getState();
+    expect(state.apps[0].profiles.map((profile) => profile.name).sort()).toEqual(["personal", "work"]);
+  });
+
+  it("creates a backup only for unsaved target content", async () => {
+    const target = path.join(targetDir, "auth.json");
+    await writeFile(target, "unsaved-current", "utf8");
+    await initApp("codex", target);
+    await createProfile("codex", "personal");
+    await writeProfile("codex", "personal", "profile-content");
+
+    await useProfile("codex", "personal", true);
+
     const state = await getState();
     expect(state.apps[0].profiles.some((profile) => profile.name.startsWith("backup-"))).toBe(true);
   });

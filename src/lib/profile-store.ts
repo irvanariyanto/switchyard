@@ -196,12 +196,21 @@ export async function useProfile(appName: string, profileName: string, backup: b
   if (!(await exists(source))) throw new SwitchyardError(`Profile "${profile}" does not exist.`, 404);
   await mkdir(path.dirname(target.targetPath), { recursive: true });
 
-  if (backup && target.exists && target.buffer) {
+  if (backup && target.exists && target.buffer && !(await targetMatchesExistingProfile(app, target.buffer))) {
     const backupName = makeBackupName();
     await writeFile(profilePath(app, backupName), target.buffer);
   }
 
   await copyFile(source, target.targetPath);
+}
+
+async function targetMatchesExistingProfile(appName: string, targetBuffer: Buffer) {
+  const profileNames = await listProfileNames(appName);
+  for (const profileName of profileNames) {
+    const profileBuffer = await readFile(profilePath(appName, profileName));
+    if (targetBuffer.equals(profileBuffer)) return true;
+  }
+  return false;
 }
 
 export async function renameProfile(appName: string, oldName: string, newName: string) {

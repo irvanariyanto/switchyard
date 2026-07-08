@@ -65,7 +65,7 @@ Switchyard is a local profile switcher for config files. It is the UI successor 
 - Keep all profile data local. Do not add analytics, network sync, remote access, or external persistence unless explicitly requested.
 - Treat the local HTTP API as privileged because it can overwrite config files. Keep it narrow and localhost-only unless the user explicitly chooses otherwise.
 - Before `useProfile` overwrites a target file, show a confirmation with the target path and selected profile.
-- Support backup-before-switch. Default it on.
+- Support backup-before-switch. Default it on, but only create a new `backup-*` profile when the current target content does not already match an existing named profile.
 
 ## UI Direction
 - Follow `docs/DESIGN_GUIDELINES.md`.
