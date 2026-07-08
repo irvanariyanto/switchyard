@@ -8,6 +8,7 @@ START_AFTER_INSTALL="false"
 BACKGROUND="false"
 UNINSTALL="false"
 PURGE_DATA="false"
+INSTALL_COMPLETION="${SWITCHYARD_INSTALL_COMPLETION:-true}"
 
 usage() {
   cat <<EOF
@@ -17,6 +18,7 @@ Usage:
   install.sh
   install.sh --start
   install.sh --start --background
+  install.sh --no-completion
   install.sh --uninstall
   install.sh --uninstall --purge-data
 
@@ -39,6 +41,9 @@ while [ $# -gt 0 ]; do
       ;;
     --purge-data)
       PURGE_DATA="true"
+      ;;
+    --no-completion)
+      INSTALL_COMPLETION="false"
       ;;
     --help|-h)
       usage
@@ -105,6 +110,16 @@ npm run build
 chmod +x "$INSTALL_DIR/bin/switchyard"
 ln -sf "$INSTALL_DIR/bin/switchyard" "$BIN_DIR/switchyard"
 
+if [ "$INSTALL_COMPLETION" != "false" ]; then
+  if "$BIN_DIR/switchyard" install-completion; then
+    COMPLETION_MESSAGE="Shell completion installed."
+  else
+    COMPLETION_MESSAGE="Shell completion was not installed automatically. Run: switchyard install-completion zsh"
+  fi
+else
+  COMPLETION_MESSAGE="Shell completion skipped. Run: switchyard install-completion"
+fi
+
 cat <<EOF
 Switchyard installed.
 
@@ -113,6 +128,8 @@ Command:
 
 Default URL:
   http://127.0.0.1:49287
+
+$COMPLETION_MESSAGE
 EOF
 
 case ":$PATH:" in

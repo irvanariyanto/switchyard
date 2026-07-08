@@ -10,6 +10,8 @@ Install, build, and start in the background:
 curl -fsSL https://raw.githubusercontent.com/irvanariyanto/switchyard/main/scripts/install.sh | bash -s -- --start --background
 ```
 
+The installer also installs shell completion for `bash`, `zsh`, or `fish` when it can detect your shell.
+
 Default URL:
 
 ```text
@@ -27,11 +29,42 @@ switchyard restart --background
 switchyard logs               # follow background logs
 switchyard open               # open in browser
 switchyard update             # pull and build the latest version
+switchyard completion         # print completion for detected shell
+switchyard install-completion # install completion for detected shell
 switchyard uninstall          # remove app, keep profile data
 switchyard uninstall --purge-data
 ```
 
 If Switchyard is already running, `switchyard` prints the URL, PID, and options to open, stop, restart in the background, or view logs.
+
+## Shell Completion
+
+Install completion for your current shell:
+
+```sh
+switchyard install-completion
+```
+
+If completion was not installed automatically during an older install, update first, then install completion:
+
+```sh
+switchyard update
+switchyard install-completion
+```
+
+Switchyard detects `bash`, `zsh`, or `fish` from `$SHELL`. You can also choose explicitly:
+
+```sh
+switchyard install-completion zsh
+switchyard install-completion bash
+switchyard install-completion fish
+```
+
+Open a new shell after installing. To inspect the generated script without installing it:
+
+```sh
+switchyard completion
+```
 
 ## Local Development
 

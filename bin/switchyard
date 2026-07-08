@@ -42,12 +42,17 @@ Usage:
   switchyard logs               Follow background logs
   switchyard open               Open $APP_NAME in a browser
   switchyard update             Pull and build the latest version
+  switchyard completion [shell] Print shell completion script
+  switchyard install-completion [shell]
   switchyard uninstall          Remove installed app, symlink, and runtime state
   switchyard uninstall --purge-data
 
 Environment:
   SWITCHYARD_PORT=$PORT
   SWITCHYARD_HOST=$HOST
+
+Shell completion:
+  shell can be auto, bash, zsh, or fish. Default: auto.
 EOF
 }
 
@@ -101,6 +106,8 @@ Options:
   switchyard stop
   switchyard restart --background
   switchyard update
+  switchyard completion
+  switchyard install-completion
   switchyard uninstall
   switchyard uninstall --purge-data
 EOF
@@ -315,6 +322,209 @@ update_switchyard() {
   fi
 }
 
+detect_completion_shell() {
+  local shell_name
+  shell_name="$(basename "${SHELL:-}")"
+  case "$shell_name" in
+    bash|zsh|fish)
+      printf '%s\n' "$shell_name"
+      ;;
+    *)
+      echo "Could not detect a supported shell from SHELL=${SHELL:-}." >&2
+      echo "Use: switchyard completion [bash|zsh|fish]" >&2
+      return 1
+      ;;
+  esac
+}
+
+resolve_completion_shell() {
+  case "${1:-auto}" in
+    auto|"")
+      detect_completion_shell
+      ;;
+    bash|zsh|fish)
+      printf '%s\n' "$1"
+      ;;
+    *)
+      echo "Unsupported shell: $1" >&2
+      echo "Use: switchyard completion [auto|bash|zsh|fish]" >&2
+      return 1
+      ;;
+  esac
+}
+
+print_bash_completion() {
+  cat <<'EOF'
+_switchyard_completion() {
+  local cur command
+  COMPREPLY=()
+  cur="${COMP_WORDS[COMP_CWORD]}"
+  command="${COMP_WORDS[1]}"
+
+  if [ "$COMP_CWORD" -eq 1 ]; then
+    COMPREPLY=($(compgen -W "start stop restart status logs open update completion install-completion uninstall help" -- "$cur"))
+    return 0
+  fi
+
+  case "$command" in
+    start|restart)
+      COMPREPLY=($(compgen -W "--background -b --daemon -d" -- "$cur"))
+      ;;
+    uninstall)
+      COMPREPLY=($(compgen -W "--purge-data" -- "$cur"))
+      ;;
+    completion|install-completion)
+      COMPREPLY=($(compgen -W "auto bash zsh fish" -- "$cur"))
+      ;;
+  esac
+}
+
+complete -F _switchyard_completion switchyard
+EOF
+}
+
+print_zsh_completion() {
+  cat <<'EOF'
+#compdef switchyard
+
+_switchyard() {
+  local -a commands shell_choices background_options uninstall_options
+  commands=(
+    'start:Start in the foreground'
+    'stop:Stop a background Switchyard server'
+    'restart:Restart Switchyard'
+    'status:Show running status'
+    'logs:Follow background logs'
+    'open:Open Switchyard in a browser'
+    'update:Pull and build the latest version'
+    'completion:Print shell completion script'
+    'install-completion:Install shell completion'
+    'uninstall:Remove installed app, symlink, and runtime state'
+    'help:Show help'
+  )
+  shell_choices=('auto:Detect shell from SHELL' 'bash:Bash' 'zsh:Zsh' 'fish:Fish')
+  background_options=('--background:Start in the background' '-b:Start in the background' '--daemon:Start in the background' '-d:Start in the background')
+  uninstall_options=('--purge-data:Remove saved profile data')
+
+  if (( CURRENT == 2 )); then
+    _describe -t commands 'switchyard command' commands
+    return
+  fi
+
+  case "${words[2]}" in
+    start|restart)
+      _describe -t options 'option' background_options
+      ;;
+    uninstall)
+      _describe -t options 'option' uninstall_options
+      ;;
+    completion|install-completion)
+      _describe -t shells 'shell' shell_choices
+      ;;
+  esac
+}
+
+_switchyard "$@"
+EOF
+}
+
+print_fish_completion() {
+  cat <<'EOF'
+complete -c switchyard -f
+complete -c switchyard -n "__fish_use_subcommand" -a start -d "Start in the foreground"
+complete -c switchyard -n "__fish_use_subcommand" -a stop -d "Stop a background Switchyard server"
+complete -c switchyard -n "__fish_use_subcommand" -a restart -d "Restart Switchyard"
+complete -c switchyard -n "__fish_use_subcommand" -a status -d "Show running status"
+complete -c switchyard -n "__fish_use_subcommand" -a logs -d "Follow background logs"
+complete -c switchyard -n "__fish_use_subcommand" -a open -d "Open Switchyard in a browser"
+complete -c switchyard -n "__fish_use_subcommand" -a update -d "Pull and build the latest version"
+complete -c switchyard -n "__fish_use_subcommand" -a completion -d "Print shell completion script"
+complete -c switchyard -n "__fish_use_subcommand" -a install-completion -d "Install shell completion"
+complete -c switchyard -n "__fish_use_subcommand" -a uninstall -d "Remove installed app, symlink, and runtime state"
+complete -c switchyard -n "__fish_use_subcommand" -a help -d "Show help"
+complete -c switchyard -n "__fish_seen_subcommand_from start restart" -l background -s b -d "Start in the background"
+complete -c switchyard -n "__fish_seen_subcommand_from start restart" -l daemon -s d -d "Start in the background"
+complete -c switchyard -n "__fish_seen_subcommand_from uninstall" -l purge-data -d "Remove saved profile data"
+complete -c switchyard -n "__fish_seen_subcommand_from completion install-completion" -a "auto bash zsh fish"
+EOF
+}
+
+print_completion() {
+  local shell_name
+  shell_name="$(resolve_completion_shell "${1:-auto}")" || return 1
+  case "$shell_name" in
+    bash) print_bash_completion ;;
+    zsh) print_zsh_completion ;;
+    fish) print_fish_completion ;;
+  esac
+}
+
+append_completion_block() {
+  local rc_file="$1"
+  local marker="$2"
+  local block="$3"
+  mkdir -p "$(dirname "$rc_file")"
+  touch "$rc_file"
+  if grep -Fq "$marker" "$rc_file"; then
+    return 0
+  fi
+  {
+    printf '\n'
+    printf '%s\n' "$block"
+  } >> "$rc_file"
+}
+
+install_completion() {
+  local shell_name completion_dir completion_file rc_file escaped_dir escaped_file marker block
+  shell_name="$(resolve_completion_shell "${1:-auto}")" || return 1
+
+  case "$shell_name" in
+    bash)
+      completion_dir="${XDG_DATA_HOME:-$HOME/.local/share}/bash-completion/completions"
+      completion_file="$completion_dir/switchyard"
+      mkdir -p "$completion_dir"
+      print_completion bash > "$completion_file"
+      rc_file="$HOME/.bashrc"
+      escaped_file="$(printf '%q' "$completion_file")"
+      marker="# >>> switchyard bash completion >>>"
+      block="$marker
+if [ -f $escaped_file ]; then
+  source $escaped_file
+fi
+# <<< switchyard bash completion <<<"
+      append_completion_block "$rc_file" "$marker" "$block"
+      echo "Installed bash completion: $completion_file"
+      echo "Updated: $rc_file"
+      ;;
+    zsh)
+      completion_dir="${XDG_DATA_HOME:-$HOME/.local/share}/zsh/site-functions"
+      completion_file="$completion_dir/_switchyard"
+      mkdir -p "$completion_dir"
+      print_completion zsh > "$completion_file"
+      rc_file="${ZDOTDIR:-$HOME}/.zshrc"
+      escaped_dir="$(printf '%q' "$completion_dir")"
+      marker="# >>> switchyard zsh completion >>>"
+      block="$marker
+fpath=($escaped_dir \$fpath)
+autoload -Uz compinit
+compinit
+# <<< switchyard zsh completion <<<"
+      append_completion_block "$rc_file" "$marker" "$block"
+      echo "Installed zsh completion: $completion_file"
+      echo "Updated: $rc_file"
+      ;;
+    fish)
+      completion_dir="${XDG_CONFIG_HOME:-$HOME/.config}/fish/completions"
+      completion_file="$completion_dir/switchyard.fish"
+      mkdir -p "$completion_dir"
+      print_completion fish > "$completion_file"
+      echo "Installed fish completion: $completion_file"
+      ;;
+  esac
+
+  echo "Open a new shell, or reload your shell configuration, then try: switchyard <Tab>"
+}
+
 uninstall_switchyard() {
   local purge_data="false"
   case "${1:-}" in
@@ -414,6 +624,12 @@ case "$cmd" in
     ;;
   update)
     update_switchyard
+    ;;
+  completion)
+    print_completion "${1:-auto}"
+    ;;
+  install-completion)
+    install_completion "${1:-auto}"
     ;;
   uninstall)
     uninstall_switchyard "${1:-}"
