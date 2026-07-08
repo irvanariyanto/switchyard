@@ -1,0 +1,282 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+APP_NAME="Switchyard"
+DEFAULT_PORT="49287"
+HOST="${SWITCHYARD_HOST:-127.0.0.1}"
+PORT="${SWITCHYARD_PORT:-$DEFAULT_PORT}"
+STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/switchyard"
+PID_FILE="$STATE_DIR/server.pid"
+LOG_FILE="$STATE_DIR/server.log"
+
+resolve_self() {
+  local source="$1"
+  while [ -L "$source" ]; do
+    local dir
+    dir="$(cd -P "$(dirname "$source")" >/dev/null 2>&1 && pwd)"
+    source="$(readlink "$source")"
+    case "$source" in
+      /*) ;;
+      *) source="$dir/$source" ;;
+    esac
+  done
+  cd -P "$(dirname "$source")/.." >/dev/null 2>&1 && pwd
+}
+
+PROJECT_DIR="$(resolve_self "${BASH_SOURCE[0]}")"
+URL="http://$HOST:$PORT"
+
+usage() {
+  cat <<EOF
+$APP_NAME
+
+Usage:
+  switchyard                    Start in the foreground
+  switchyard start              Start in the foreground
+  switchyard start --background Start in the background
+  switchyard stop               Stop a background Switchyard server
+  switchyard restart            Restart in the foreground
+  switchyard restart --background
+  switchyard status             Show running status
+  switchyard logs               Follow background logs
+  switchyard open               Open $APP_NAME in a browser
+
+Environment:
+  SWITCHYARD_PORT=$PORT
+  SWITCHYARD_HOST=$HOST
+EOF
+}
+
+ensure_state_dir() {
+  mkdir -p "$STATE_DIR"
+}
+
+managed_pid() {
+  [ -f "$PID_FILE" ] || return 1
+  local pid
+  pid="$(cat "$PID_FILE" 2>/dev/null || true)"
+  [ -n "$pid" ] || return 1
+  if ! kill -0 "$pid" 2>/dev/null; then
+    rm -f "$PID_FILE" 2>/dev/null || true
+    return 1
+  fi
+  printf '%s\n' "$pid"
+}
+
+port_pid() {
+  command -v lsof >/dev/null 2>&1 || return 1
+  lsof -nP -tiTCP:"$PORT" -sTCP:LISTEN 2>/dev/null | head -n 1
+}
+
+running_pid() {
+  managed_pid || port_pid
+}
+
+url_ready() {
+  command -v curl >/dev/null 2>&1 || return 1
+  curl -fsS --max-time 1 "$URL" >/dev/null 2>&1
+}
+
+print_running_options() {
+  local pid="$1"
+  cat <<EOF
+$APP_NAME is already running at $URL
+PID: $pid
+
+Options:
+  switchyard open
+  switchyard status
+  switchyard stop
+  switchyard restart --background
+  switchyard logs
+EOF
+}
+
+ensure_dependencies() {
+  cd "$PROJECT_DIR"
+  if [ ! -d node_modules ]; then
+    echo "Installing dependencies..."
+    npm install
+  fi
+  if [ ! -f .next/BUILD_ID ]; then
+    echo "Building $APP_NAME..."
+    npm run build
+  fi
+}
+
+serve() {
+  cd "$PROJECT_DIR"
+  exec "$PROJECT_DIR/node_modules/.bin/next" start -H "$HOST" -p "$PORT"
+}
+
+start_foreground() {
+  local pid
+  pid="$(running_pid || true)"
+  if [ -n "$pid" ]; then
+    print_running_options "$pid"
+    return 0
+  fi
+
+  ensure_dependencies
+  echo "Starting $APP_NAME at $URL"
+  echo "Tip: use 'switchyard start --background' to keep it running after this terminal closes."
+  serve
+}
+
+start_background() {
+  ensure_state_dir
+  local pid
+  pid="$(running_pid || true)"
+  if [ -n "$pid" ]; then
+    print_running_options "$pid"
+    return 0
+  fi
+
+  ensure_dependencies
+  : > "$LOG_FILE"
+  nohup "$PROJECT_DIR/bin/switchyard" serve >>"$LOG_FILE" 2>&1 &
+  pid="$!"
+  echo "$pid" > "$PID_FILE"
+
+  local ready="false"
+  for _ in 1 2 3 4 5 6 7 8 9 10; do
+    if ! kill -0 "$pid" 2>/dev/null; then
+      break
+    fi
+    if url_ready; then
+      ready="true"
+      break
+    fi
+    sleep 1
+  done
+
+  if [ "$ready" = "true" ]; then
+    echo "$APP_NAME is running in the background at $URL"
+    echo "PID: $pid"
+    echo "Logs: $LOG_FILE"
+    echo "Stop: switchyard stop"
+  else
+    rm -f "$PID_FILE" 2>/dev/null || true
+    echo "Failed to start $APP_NAME. Logs:"
+    tail -n 80 "$LOG_FILE" 2>/dev/null || true
+    return 1
+  fi
+}
+
+stop_server() {
+  ensure_state_dir
+  local pid
+  pid="$(managed_pid || true)"
+  if [ -z "$pid" ]; then
+    pid="$(port_pid || true)"
+    if [ -z "$pid" ]; then
+      echo "$APP_NAME is not running."
+      rm -f "$PID_FILE" 2>/dev/null || true
+      return 0
+    fi
+    echo "$APP_NAME is listening on $URL but was not started by this command."
+    printf "Stop PID %s? [y/N] " "$pid"
+    read -r answer
+    case "$answer" in
+      y|Y|yes|YES) ;;
+      *) echo "Not stopped."; return 0 ;;
+    esac
+  fi
+
+  kill "$pid" 2>/dev/null || true
+  for _ in 1 2 3 4 5; do
+    if ! kill -0 "$pid" 2>/dev/null; then
+      rm -f "$PID_FILE" 2>/dev/null || true
+      echo "$APP_NAME stopped."
+      return 0
+    fi
+    sleep 1
+  done
+
+  kill -9 "$pid" 2>/dev/null || true
+  rm -f "$PID_FILE" 2>/dev/null || true
+  echo "$APP_NAME stopped."
+}
+
+status() {
+  local pid
+  pid="$(running_pid || true)"
+  if [ -n "$pid" ]; then
+    echo "$APP_NAME is running at $URL"
+    echo "PID: $pid"
+    [ -f "$LOG_FILE" ] && echo "Logs: $LOG_FILE"
+  else
+    echo "$APP_NAME is not running."
+    echo "Start: switchyard start"
+    echo "Background: switchyard start --background"
+  fi
+}
+
+logs() {
+  ensure_state_dir
+  touch "$LOG_FILE"
+  tail -f "$LOG_FILE"
+}
+
+open_browser() {
+  if command -v open >/dev/null 2>&1; then
+    open "$URL"
+  elif command -v xdg-open >/dev/null 2>&1; then
+    xdg-open "$URL"
+  else
+    echo "$URL"
+  fi
+}
+
+cmd="${1:-start}"
+shift || true
+
+background="false"
+case "${1:-}" in
+  --background|-b|--daemon|-d)
+    background="true"
+    shift
+    ;;
+esac
+
+case "$cmd" in
+  start)
+    if [ "$background" = "true" ]; then
+      start_background
+    else
+      start_foreground
+    fi
+    ;;
+  serve)
+    serve
+    ;;
+  stop)
+    stop_server
+    ;;
+  restart)
+    stop_server
+    if [ "$background" = "true" ]; then
+      start_background
+    else
+      start_foreground
+    fi
+    ;;
+  status)
+    status
+    ;;
+  logs)
+    logs
+    ;;
+  open)
+    open_browser
+    ;;
+  help|--help|-h)
+    usage
+    ;;
+  *)
+    echo "Unknown command: $cmd"
+    echo
+    usage
+    exit 1
+    ;;
+esac
